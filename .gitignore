@@ -1,0 +1,16 @@
+# Fichiers compilés
+*.class
+
+# Logs
+*.log
+
+# Dossiers de build
+/out/
+/build/
+
+# Configuration IntelliJ
+.idea/
+*.iml
+
+# Autres fichiers temporaires
+.DS_Store
