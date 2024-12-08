@@ -9,23 +9,24 @@ public class DefaultTeam {
   public Evaluation eval = new Evaluation();
 
   public ArrayList<Point> calculFVS(ArrayList<Point> points, int edgeThreshold) {
-    // Étape 1 : Approche gloutonne améliorée
+    // étape 1 : approche gloutonne améliorée pour une solution initiale
     ArrayList<Point> fvs = greedyApproximation(points, edgeThreshold);
 
-    // Étape 2 : Optimisation locale
+    // étape 2 : optimisation locale pour raffiner la solution
     fvs = localOptimization(points, fvs, edgeThreshold);
 
     return fvs;
   }
 
+  // méthode gloutonne pour une solution initiale
   private ArrayList<Point> greedyApproximation(ArrayList<Point> points, int edgeThreshold) {
     ArrayList<Point> fvs = new ArrayList<>();
     ArrayList<Point> remainingPoints = new ArrayList<>(points);
 
-    // Suppression initiale des sommets à faible degré
+    // suppression des sommets à faible degré
     remainingPoints.removeIf(p -> eval.neighbor(p, points, edgeThreshold).size() < 2);
 
-    // Sélection des sommets à fort impact pour casser les cycles
+    // ajout des sommets les plus connectés pour casser les cycles
     while (!eval.isValid(points, fvs, edgeThreshold)) {
       Point bestChoice = selectBestVertex(remainingPoints, fvs, edgeThreshold);
       if (bestChoice != null) {
@@ -36,6 +37,7 @@ public class DefaultTeam {
     return fvs;
   }
 
+  // sélection du sommet avec le plus grand impact sur les cycles
   private Point selectBestVertex(ArrayList<Point> remainingPoints, ArrayList<Point> fvs, int edgeThreshold) {
     Point bestVertex = null;
     double maxImpact = -1;
@@ -53,8 +55,8 @@ public class DefaultTeam {
     return bestVertex;
   }
 
+  // impact calculé comme le nombre de voisins directs et indirects
   private double calculateImpact(Point p, ArrayList<Point> neighbors, int edgeThreshold) {
-    // Impact basé sur le nombre de voisins et leurs degrés
     double impact = neighbors.size();
     for (Point neighbor : neighbors) {
       impact += eval.neighbor(neighbor, neighbors, edgeThreshold).size();
@@ -62,6 +64,7 @@ public class DefaultTeam {
     return impact;
   }
 
+  // optimisation locale en affinant la solution initiale
   private ArrayList<Point> localOptimization(ArrayList<Point> points, ArrayList<Point> fvs, int edgeThreshold) {
     ArrayList<Point> currentFVS = new ArrayList<>(fvs);
     boolean improvement = true;
@@ -69,21 +72,21 @@ public class DefaultTeam {
     while (improvement) {
       improvement = false;
 
-      // Étape 1 : Remplacement "deux-pour-un"
+      // étape 1 : remplacement de deux sommets par un
       ArrayList<Point> refined = replaceTwoWithOne(points, currentFVS, edgeThreshold);
       if (refined.size() < currentFVS.size()) {
         currentFVS = refined;
         improvement = true;
       }
 
-      // Étape 2 : Raffinement glouton
+      // étape 2 : amélioration par raffinement glouton
       ArrayList<Point> greedyRefined = refineByGreedy(points, currentFVS, edgeThreshold);
       if (greedyRefined.size() < currentFVS.size()) {
         currentFVS = greedyRefined;
         improvement = true;
       }
 
-      // Étape 3 : Simulated Annealing
+      // étape 3 : recuit simulé pour explorer davantage de solutions
       ArrayList<Point> annealed = simulatedAnnealing(points, currentFVS, edgeThreshold);
       if (annealed.size() < currentFVS.size()) {
         currentFVS = annealed;
@@ -94,6 +97,7 @@ public class DefaultTeam {
     return currentFVS;
   }
 
+  // remplacement de deux sommets par un autre
   private ArrayList<Point> replaceTwoWithOne(ArrayList<Point> points, ArrayList<Point> fvs, int edgeThreshold) {
     ArrayList<Point> bestFVS = new ArrayList<>(fvs);
     ArrayList<Point> remaining = new ArrayList<>(points);
@@ -120,6 +124,7 @@ public class DefaultTeam {
     return bestFVS;
   }
 
+  // raffinement glouton pour tester la validité après suppression
   private ArrayList<Point> refineByGreedy(ArrayList<Point> points, ArrayList<Point> fvs, int edgeThreshold) {
     ArrayList<Point> refinedFVS = new ArrayList<>(fvs);
     for (int i = 0; i < refinedFVS.size(); i++) {
@@ -131,45 +136,43 @@ public class DefaultTeam {
     return refinedFVS;
   }
 
+  // recuit simulé pour explorer des solutions alternatives
   private ArrayList<Point> simulatedAnnealing(ArrayList<Point> points, ArrayList<Point> fvs, int edgeThreshold) {
     ArrayList<Point> bestFVS = new ArrayList<>(fvs);
     ArrayList<Point> currentFVS = new ArrayList<>(fvs);
 
-    double temperature = 200.0;  // Température initiale réduite
-    double coolingRate = 0.99;  // Accélération du refroidissement
-    int maxIterations = 300;    // Limitation stricte des itérations
+    double temperature = 200.0; // initiale
+    double coolingRate = 0.99;  // taux
+    int maxIterations = 300;   // limite d'itérations
 
     Random random = new Random();
 
     while (temperature > 1 && maxIterations > 0) {
       ArrayList<Point> neighborFVS = new ArrayList<>(currentFVS);
 
-      // Modification aléatoire contrôlée
+      // modification aléatoire (ajout ou suppression)
       if (random.nextBoolean() && !neighborFVS.isEmpty()) {
-        neighborFVS.remove(random.nextInt(neighborFVS.size())); // Retirer un sommet
+        neighborFVS.remove(random.nextInt(neighborFVS.size()));
       } else {
         ArrayList<Point> remaining = new ArrayList<>(points);
         remaining.removeAll(neighborFVS);
         if (!remaining.isEmpty()) {
-          neighborFVS.add(remaining.get(random.nextInt(remaining.size()))); // Ajouter un sommet
+          neighborFVS.add(remaining.get(random.nextInt(remaining.size())));
         }
       }
 
-      // Vérifier la validité de la solution voisine
+      // mise à jour si la solution est valide et potentiellement meilleure
       if (eval.isValid(points, neighborFVS, edgeThreshold)) {
-        // Accepter la solution voisine si elle est meilleure ou par probabilité
         if (neighborFVS.size() < currentFVS.size() ||
                 Math.exp((currentFVS.size() - neighborFVS.size()) / temperature) > random.nextDouble()) {
           currentFVS = neighborFVS;
         }
 
-        // Mettre à jour la meilleure solution
         if (currentFVS.size() < bestFVS.size()) {
           bestFVS = new ArrayList<>(currentFVS);
         }
       }
 
-      // Réduire la température
       temperature *= coolingRate;
       maxIterations--;
     }
