@@ -31,7 +31,7 @@ public class Evaluation {
 
     return true;
   }
-  private ArrayList<Point> neighbor(Point p, ArrayList<Point> vertices, int edgeThreshold){
+  ArrayList<Point> neighbor(Point p, ArrayList<Point> vertices, int edgeThreshold){
     ArrayList<Point> result = new ArrayList<Point>();
 
     for (Point point:vertices) if (point.distance(p)<edgeThreshold && !point.equals(p)) result.add((Point)point.clone());

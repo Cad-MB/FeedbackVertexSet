@@ -2,132 +2,121 @@ package algorithms;
 
 import java.awt.Point;
 import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.PriorityQueue;
 
 public class DefaultTeam {
 
-  public ArrayList<Point> calculFVS(ArrayList<Point> points, int edgeThreshold) {
-    // Étape 1 : Identifier les cycles dans le graphe et initialiser les poids
-    ArrayList<Point> fvs = approximateFVS(points, edgeThreshold);
+  public Evaluation eval = new Evaluation();
 
-    // Étape 2 : Optimisation locale pour affiner la solution
-    fvs = refineFVS(points, fvs, edgeThreshold);
+  public ArrayList<Point> calculFVS(ArrayList<Point> points, int edgeThreshold) {
+    // Step 1: Improved greedy approximation
+    ArrayList<Point> fvs = greedyApproximation(points, edgeThreshold);
+
+    // Step 2: Aggressive local optimization
+    fvs = localOptimization(points, fvs, edgeThreshold);
 
     return fvs;
   }
 
-  private ArrayList<Point> approximateFVS(ArrayList<Point> points, int edgeThreshold) {
+  private ArrayList<Point> greedyApproximation(ArrayList<Point> points, int edgeThreshold) {
     ArrayList<Point> fvs = new ArrayList<>();
-    HashSet<Point> remainingPoints = new HashSet<>(points);
+    ArrayList<Point> remainingPoints = new ArrayList<>(points);
 
-    while (hasCycles(new ArrayList<>(remainingPoints), edgeThreshold)) {
-      Point toRemove = selectWeightedVertex(remainingPoints, edgeThreshold);
-      if (toRemove != null) {
-        fvs.add(toRemove);
-        remainingPoints.remove(toRemove);
+    // Initial removal of low-degree vertices
+    remainingPoints.removeIf(p -> eval.neighbor(p, points, edgeThreshold).size() < 2);
+
+    // Iteratively select high-impact vertices to break cycles
+    while (!eval.isValid(points, fvs, edgeThreshold)) {
+      Point bestChoice = selectBestVertex(remainingPoints, fvs, edgeThreshold);
+      if (bestChoice != null) {
+        fvs.add(bestChoice);
+        remainingPoints.remove(bestChoice);
       }
     }
     return fvs;
   }
 
-  private Point selectWeightedVertex(HashSet<Point> points, int edgeThreshold) {
-    PriorityQueue<Point> queue = new PriorityQueue<>(
-            (p1, p2) -> Double.compare(calculateWeight(p2, points, edgeThreshold),
-                    calculateWeight(p1, points, edgeThreshold))
-    );
-    queue.addAll(points);
-    return queue.isEmpty() ? null : queue.poll();
+  private Point selectBestVertex(ArrayList<Point> remainingPoints, ArrayList<Point> fvs, int edgeThreshold) {
+    Point bestVertex = null;
+    double maxImpact = -1;
+
+    for (Point p : remainingPoints) {
+      ArrayList<Point> neighbors = eval.neighbor(p, remainingPoints, edgeThreshold);
+      double impact = calculateImpact(p, neighbors, edgeThreshold);
+
+      if (impact > maxImpact) {
+        maxImpact = impact;
+        bestVertex = p;
+      }
+    }
+
+    return bestVertex;
   }
 
-  private double calculateWeight(Point p, HashSet<Point> points, int edgeThreshold) {
-    int degree = calculateDegree(p, points, edgeThreshold);
-    return degree > 1 ? (double) degree / (degree - 1) : Double.MAX_VALUE;
+  private double calculateImpact(Point p, ArrayList<Point> neighbors, int edgeThreshold) {
+    // Impact is based on the number of neighbors and their degrees
+    double impact = neighbors.size();
+    for (Point neighbor : neighbors) {
+      impact += eval.neighbor(neighbor, neighbors, edgeThreshold).size();
+    }
+    return impact;
   }
 
-  private ArrayList<Point> refineFVS(ArrayList<Point> points, ArrayList<Point> fvs, int edgeThreshold) {
-    ArrayList<Point> refinedFVS = new ArrayList<>(fvs);
+  private ArrayList<Point> localOptimization(ArrayList<Point> points, ArrayList<Point> fvs, int edgeThreshold) {
+    ArrayList<Point> currentFVS = new ArrayList<>(fvs);
     boolean improvement = true;
 
     while (improvement) {
       improvement = false;
 
-      for (int i = 0; i < refinedFVS.size(); i++) {
-        Point removedPoint = refinedFVS.remove(i);
-        ArrayList<Point> remainingPoints = new ArrayList<>(points);
-        remainingPoints.removeAll(refinedFVS);
+      // Try removing each vertex and check if the graph remains valid
+      for (int i = 0; i < currentFVS.size(); i++) {
+        Point removed = currentFVS.remove(i);
 
-        if (!hasCycles(remainingPoints, edgeThreshold)) {
+        if (eval.isValid(points, currentFVS, edgeThreshold)) {
           improvement = true;
-          break;
+          break; // Found an improvement
+        } else {
+          currentFVS.add(i, removed); // Restore the vertex if not valid
         }
+      }
 
-        refinedFVS.add(i, removedPoint); // Restore point if it doesn't improve the solution
+      // Attempt two-for-one replacements for further refinement
+      ArrayList<Point> refined = replaceTwoWithOne(points, currentFVS, edgeThreshold);
+      if (refined.size() < currentFVS.size()) {
+        currentFVS = refined;
+        improvement = true;
       }
     }
 
-    return refinedFVS;
+    return currentFVS;
   }
 
-  private int calculateDegree(Point p, HashSet<Point> points, int edgeThreshold) {
-    int degree = 0;
-    for (Point other : points) {
-      if (!p.equals(other) && p.distance(other) < edgeThreshold) {
-        degree++;
-      }
-    }
-    return degree;
-  }
+  private ArrayList<Point> replaceTwoWithOne(ArrayList<Point> points, ArrayList<Point> fvs, int edgeThreshold) {
+    ArrayList<Point> refinedFVS = new ArrayList<>(fvs);
 
-  private boolean hasCycles(ArrayList<Point> points, int edgeThreshold) {
-    UnionFind uf = new UnionFind(points.size());
-    for (int i = 0; i < points.size(); i++) {
-      for (int j = i + 1; j < points.size(); j++) {
-        if (points.get(i).distance(points.get(j)) < edgeThreshold) {
-          if (!uf.union(i, j)) {
-            return true; // Cycle détecté
+    for (int i = 0; i < fvs.size(); i++) {
+      for (int j = i + 1; j < fvs.size(); j++) {
+        Point p1 = fvs.get(i);
+        Point p2 = fvs.get(j);
+
+        refinedFVS.remove(p1);
+        refinedFVS.remove(p2);
+
+        for (Point candidate : points) {
+          if (!fvs.contains(candidate)) {
+            refinedFVS.add(candidate);
+            if (eval.isValid(points, refinedFVS, edgeThreshold)) {
+              return refinedFVS;
+            }
+            refinedFVS.remove(candidate);
           }
         }
+
+        // Restore removed points if no valid replacement found
+        refinedFVS.add(p1);
+        refinedFVS.add(p2);
       }
     }
-    return false;
-  }
-
-  private static class UnionFind {
-    int[] parent;
-    int[] rank;
-
-    UnionFind(int size) {
-      parent = new int[size];
-      rank = new int[size];
-      for (int i = 0; i < size; i++) {
-        parent[i] = i;
-        rank[i] = 0;
-      }
-    }
-
-    int find(int x) {
-      if (parent[x] != x) {
-        parent[x] = find(parent[x]);
-      }
-      return parent[x];
-    }
-
-    boolean union(int x, int y) {
-      int rootX = find(x);
-      int rootY = find(y);
-      if (rootX == rootY) {
-        return false;
-      }
-      if (rank[rootX] > rank[rootY]) {
-        parent[rootY] = rootX;
-      } else if (rank[rootX] < rank[rootY]) {
-        parent[rootX] = rootY;
-      } else {
-        parent[rootY] = rootX;
-        rank[rootX]++;
-      }
-      return true;
-    }
+    return refinedFVS;
   }
 }
